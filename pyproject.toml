@@ -35,6 +35,6 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --basetemp=.pytest_tmp"
 # Harmless notice from newer Starlette versions; hide it so real warnings stand out.
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
