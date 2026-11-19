@@ -69,3 +69,54 @@ The documents table currently only has 20 rows, so it fits inside just a couple 
 
 When would it switch to the GIN index? (1 line)
 t will switch to the GIN index once the table grows large enough (thousands of rows) that scanning every page becomes slower and more expensive than looking up a selective filter in the index
+
+## D04 · Docker, Compose and tests
+
+### The image
+
+```text
+IMAGE              ID             DISK USAGE   CONTENT SIZE   EXTRA
+outageoracle:dev   380e35681929        300MB           70MB
+uid=999(app) gid=999(app) groups=999(app)
+```
+
+- Size: 300 MB (target: under 400 MB)
+- First build: 24.6 s. After changing one line of code: 10.0 s.
+- Which step said CACHED, and why? The dependency installation layer (`[builder 4/6] uv sync`) said CACHED because `pyproject.toml` and `uv.lock` were unchanged, so Docker reused the cached layer and only rebuilt from `COPY . /app` onward.
+
+### The stack
+
+```text
+NAME                     IMAGE                    COMMAND                  SERVICE   CREATED         STATUS       PORTS
+outageoracle-api-1       outageoracle-api         "sh -c 'exec uvicorn…"   api       2 minutes ago   Up 2 minutes (healthy)     0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+outageoracle-db-1        pgvector/pgvector:pg17   "docker-entrypoint.s…"   db        2 minutes ago   Up 2 minutes (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+outageoracle-migrate-1   outageoracle-migrate     "sh -c 'alembic upgr…"   migrate   2 minutes ago   Exited (0) 2 minutes ago
+outageoracle-redis-1     redis:7-alpine           "docker-entrypoint.s…"   redis     2 minutes ago   Up 2 minutes (healthy)     0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+
+migrate-1  | records=20 inserted=20 updated=0 unchanged=0
+migrate-1  | records=20 inserted=0 updated=0 unchanged=20
+```
+
+### Breaking the database on purpose
+
+```text
+db stopped:  /health → {"status":"ok","app":"outageoracle","env":"local"}
+db stopped:  /ready  → {"status":"not_ready","checks":{"database":false}}
+db started:  /ready  → {"status":"ready","checks":{"database":true}}
+db started:  /health → {"status":"ok","app":"outageoracle","env":"local"}
+```
+
+Why should a load balancer stop sending traffic here but not restart the app?
+The FastAPI process itself is still alive and healthy, so restarting the container will not fix an external database outage and only causes unnecessary downtime. Failing `/ready` tells the load balancer to pause routing traffic until Postgres recovers on its own.
+
+### Tests and coverage
+
+```text
+uv run poe test              → 16 passed in 0.70s
+uv run poe test-integration  → 7 passed in 8.42s
+coverage TOTAL, unit only    → 83%
+coverage TOTAL, with integration tests → 92%
+```
+
+Two files or lines my coverage report says are never run, and whether they matter:
+`src/outageoracle/logging_setup.py` (lines 16–28) configures production JSON log formatting that isn't triggered in the local test environment (low risk, though worth a small unit test), while `src/outageoracle/db/repository.py` (lines 32, 36, 66) covers optional query filter branches that matter if users filter by those fields in production.
