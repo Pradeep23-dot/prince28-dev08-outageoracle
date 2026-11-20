@@ -120,3 +120,38 @@ coverage TOTAL, with integration tests → 92%
 
 Two files or lines my coverage report says are never run, and whether they matter:
 `src/outageoracle/logging_setup.py` (lines 16–28) configures production JSON log formatting that isn't triggered in the local test environment (low risk, though worth a small unit test), while `src/outageoracle/db/repository.py` (lines 32, 36, 66) covers optional query filter branches that matter if users filter by those fields in production.
+
+
+
+## D05 · CI/CD and going live
+
+- Live URL: [https://onrender.com](https://onrender.com)
+- CI run for pull request 1: [https://github.com](https://github.com)
+- First deploy that ran by itself: [https://github.com](https://github.com)
+- Merge clicked at 14:37 → "Smoke test passed" at 14:40 → lead time: 3 min
+
+### Smoke test output from that CD run
+
+```text
+ok  /health -> 200, version 197f1d7adaac4cc5c16ebcfc893252af22141836
+ok  /ready -> 200 {'status': 'ready', 'checks': {'database': True}}
+ok  /v1/documents?limit=1 -> 200
+Smoke test passed
+```
+
+### Rollback drill
+
+- Rolled back to sha `dacf9720fd4040eb2bb3c271f9cf0f4bc5ef67` : started 18:24, smoke passed 18:25 (1 min)
+- Rolled forward to sha `197f1d7adaac4cc5c16ebcfc893252af22141836` : 1 min
+- During the rollback, the database stayed on the newer schema. Why is that safe here?
+  Migrations are additive and backward-compatible (no destructive column drops or renames). Because the newer schema preserves all columns and types the older image expects, the rolled-back code continues reading and writing safely.
+
+### Where my secrets live
+
+- Neon string: GitHub Secret DATABASE_URL + Render environment. Not in Git, not in the image.
+- Render deploy hook: GitHub Secret RENDER_DEPLOY_HOOK only.
+
+### Monitoring
+
+- UptimeRobot checks /health every 5 minutes; alerts go to my email.
+- One thing that would make my live app faster on its first request: Upgrading from Render's free tier (which spins down idle instances after 15 minutes of inactivity) to an always-on paid instance to eliminate cold-start delays.
