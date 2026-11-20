@@ -1,11 +1,18 @@
 # prince28-dev08-outageoracle
 College Project Repository
 
+
 # OutageOracle
+[![CI](https://github.com/Pradeep23-dot/prince28-dev08-outageoracle/actions/workflows/ci.yml/badge.svg)](https://github.com/Pradeep23-dot/prince28-dev08-outageoracle/actions/workflows/ci.yml)
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Foutageoracle.onrender.com%2Fhealth&label=live)](https://outageoracle.onrender.com/docs)
+[![Uptime (30 days)](https://img.shields.io/uptimerobot/ratio/m804746079-f569d63ce4ede2f0b1c4f081)](https://outageoracle.onrender.com/health)
+
+**Live:** https://outageoracle.onrender.com · [API docs](https://outageoracle.onrender.com/docs) · [health](https://outageoracle.onrender.com/health)
+
 
 Learns from 400+ public post-mortems: what broke, why, how it was found and fixed, filtered by root cause and technology.
 
-**Status:** Day 1 foundation (FastAPI skeleton, quality gates). Live URL from Day 5.
+**Status:** Week 1 complete · live at https://outageoracle.onrender.com
 
 ## Who it's for
 
