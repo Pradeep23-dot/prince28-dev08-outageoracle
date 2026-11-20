@@ -155,3 +155,12 @@ Smoke test passed
 
 - UptimeRobot checks /health every 5 minutes; alerts go to my email.
 - One thing that would make my live app faster on its first request: Upgrading from Render's free tier (which spins down idle instances after 15 minutes of inactivity) to an always-on paid instance to eliminate cold-start delays.
+
+## Day 5 Stretch Tasks
+
+### Continuous Delivery Human Gate
+A manual approval gate before production deployment is worth the delay when deploying high-risk database schema migrations, billing/payment logic, or compliance-critical changes where an automated rollback cannot easily undo data mutations. For routine, backward-compatible stateless application updates covered by strong automated tests and fast rollbacks, continuous deployment without a human gate is preferable.
+
+### Change Lead Time (DORA Metric)
+- **Average lead time (merge on `main` -> `Smoke test passed`):** **2m 03s** across automated PR-merge runs (`CI #7` + `CD #2` = `1m 18s + 50s = 2m 08s`; `CI #9` + `CD #8` = `1m 04s + 54s = 1m 58s`; manual rollback/deploy `CD #5` took `51s`).
+- **Slowest step:** The **CI workflow (`~1m 11s` average)**—specifically building and pushing the Docker image to GHCR—followed by waiting for Render to swap containers and pass the `/health` smoke check inside CD (`~52s` average).
