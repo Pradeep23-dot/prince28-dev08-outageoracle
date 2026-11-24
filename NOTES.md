@@ -185,3 +185,49 @@ A manual approval gate before production deployment is worth the delay when depl
 ### One thing that went wrong today, and how I fixed it
 
 Out of the target URLs, 4 failed to fetch (1 blocked by `robots.txt` and 3 HTTP errors) and 9 returned blank page counts (JS-rendered status pages or non-HTML links like YouTube). I documented these exclusions in `DATASET.md` under "Known gaps" and confirmed the remaining 107 files (720 pages) still met the start target.
+
+## D07 · Parser comparison
+
+<!-- parsers:start -->
+| File | Parsers (A / B) | Pages | A found | B found | Time (A / B) | Better, why |
+|---|---|---|---|---|---|---|
+| watch-ff270a32.html | trafilatura / strip tags | 1 | 145 chars, 0 headings, 0 tables | 195 chars, 0 headings, 0 tables | 0.11 s / 0.02 s | |
+| boeing-737-8k5-g-tawg-04-21-cb40ad5a.pdf | PyMuPDF / pypdf | 7 | 12,771 chars, 27 headings, 0 tables | 12,478 chars, 0 headings, 0 tables | 0.59 s / 0.18 s | |
+| northeast-blackout-of-2003-ec94df50.html | trafilatura / strip tags | 26 | 71,911 chars, 42 headings, 4 tables | 88,632 chars, 0 headings, 0 tables | 0.34 s / 0.02 s | |
+| knightmare-a-devops-cautionary-tale-6b198b63.htm | trafilatura / strip tags | 15 | 41,802 chars, 6 headings, 0 tables | 54,788 chars, 0 headings, 0 tables | 0.13 s / 0.02 s | |
+| 56489-6e9363e9.html | trafilatura / strip tags | 12 | 28,395 chars, 4 headings, 0 tables | 41,239 chars, 0 headings, 0 tables | 0.12 s / 0.01 s | |
+| fmel9i2faradkawkzaa2-e0070fdc.html | trafilatura / strip tags | 95 | 288,493 chars, 4 headings, 0 tables | 293,868 chars, 0 headings, 0 tables | 0.67 s / 0.05 s | |
+| 2329b7-67178eb0.html | trafilatura / strip tags | 19 | 50,285 chars, 1 headings, 0 tables | 56,068 chars, 0 headings, 0 tables | 0.09 s / 0.01 s | |
+| incident-review-api-and-dashboard-outage-on-10th | trafilatura / strip tags | 8 | 21,066 chars, 14 headings, 0 tables | 24,236 chars, 0 headings, 0 tables | 0.06 s / 0.01 s | |
+| how-i-broke-git-push-heroku-main-50f8356c.html | trafilatura / strip tags | 2 | 5,946 chars, 6 headings, 0 tables | 13,384 chars, 0 headings, 0 tables | 0.04 s / 0.01 s | |
+| route-leak-incident-january-22-2026-c6591b35.htm | trafilatura / strip tags | 5 | 12,723 chars, 5 headings, 1 tables | 25,013 chars, 0 headings, 0 tables | 0.15 s / 0.01 s | |
+<!-- parsers:end -->
+
+### D07 · Parsing my corpus
+
+- Files in the manifest: 107 · parsed: 103 · failed: 4 · pages in Postgres: 627
+- Parsing coverage: 96.3 % of files
+
+### Failures by reason
+
+| Reason | Files | What I did |
+|---|---|---|
+| empty | 3 | Left in `parse_failures` (`attempts = 2`) — JS-rendered status pages (`://heroku.com` #1091, `allegro.tech`) and a redirect stub (`dns-outage-portmortem`) with no static HTML body |
+| unsupported_type | 1 | Left in `parse_failures` (`attempts = 2`) — IERS leap-second plain-text bulletin saved as `.bin` (`bulletinc-082c5bfa.bin`) |
+
+- The one I fixed: file `crates-io-postmortem-9508f449.html` (re-fetched as `rust-lang-abf27b07.html`), reason `empty`, fix: updated the URL in `data/sources.csv` from `.html` to the canonical trailing-slash URL (`https://rust-lang.org`), re-fetched (`18.2 kB`), and ran `parse_corpus.py --retry-failed`
+
+### What I saw when I read my parsed pages
+
+- A page where the heading path is right (document, page, path): `crates.io Postmortem: Broken Crate Downloads` (`rust-lang-abf27b07.html`), page 1 — extracted section headings (`Summary`, `Leadup`, `Fault`, `Impact`, `Detection`, `Response`, `Recovery`, `Timeline`, `Root causes`, `Corrective actions`) match the post-mortem sections accurately
+- Something that came out wrong (document, page, what): `watch-ff270a32.html` (YouTube link), page 1 — only extracted 145 characters of generic video player shell text with 0 headings because the post-mortem is a video rather than an HTML article
+- A table: Markdown grid or loose text? (document, page): Markdown grid — in Cloudflare's `Route Leak Incident on January 22, 2026` (`route-leak-incident-january-22-2026-c6591b35.htm`), `trafilatura` preserved the incident timeline table as a structured Markdown grid (and preserved 4 Markdown tables in `Northeast Blackout of 2003`), whereas plain tag-stripping flattened all tables into loose text (`0 tables`)
+
+### My parser choice
+
+- For PDFs I use **PyMuPDF** because on `boeing-737-8k5-g-tawg-04-21-cb40ad5a.pdf` (7 pages) it detected all **27 section headings** and extracted **12,771 characters** cleanly, whereas `pypdf` found **0 headings** (12,478 characters). Although PyMuPDF took **0.59 s** vs. `pypdf`'s **0.18 s**, that ~0.4 s difference is negligible when scaling to the full 4,000-page corpus.
+- A kind of document in my corpus that neither parser handles well: **JavaScript-rendered status pages** (like `://heroku.com` SPA shells) and **video links** (`://youtube.com...`), which contain no static article DOM in the fetched HTML and yield empty or boilerplate-only text.
+
+### One thing that went wrong today, and how I fixed it
+
+During the initial `parse_corpus.py --limit 20` run, Neon Postgres closed the TLS connection mid-batch (`WinError 121` / `asyncpg.exceptions.ConnectionDoesNotExistError`), and 5 HTML files initially failed as `empty` (including `crates-io-postmortem` due to a `<meta http-equiv="refresh">` `.html` redirect stub). I re-ran `parse_corpus.py` to resume cleanly from already-committed documents, replaced the `crates-io-postmortem` redirect URL with its canonical trailing-slash URL in `data/sources.csv`, and verified recovery via `parse_corpus.py --retry-failed`.
