@@ -164,3 +164,24 @@ A manual approval gate before production deployment is worth the delay when depl
 ### Change Lead Time (DORA Metric)
 - **Average lead time (merge on `main` -> `Smoke test passed`):** **2m 03s** across automated PR-merge runs (`CI #7` + `CD #2` = `1m 18s + 50s = 2m 08s`; `CI #9` + `CD #8` = `1m 04s + 54s = 1m 58s`; manual rollback/deploy `CD #5` took `51s`).
 - **Slowest step:** The **CI workflow (`~1m 11s` average)**—specifically building and pushing the Docker image to GHCR—followed by waiting for Render to swap containers and pass the `/health` smoke check inside CD (`~52s` average).
+
+## Day 06 — Fetch & Resumable Ingest
+
+### Sources & Licensing
+- **Sources:** Google SRE Book (`https://sre.google`, 10 chapters/appendices) and Dan Luu's post-mortems repository (`https://github.com`).
+- **Licence / Terms:** Google SRE Book chapters are published under **CC BY-NC-ND 4.0** (free to read, download, and store for non-commercial personal study with attribution). Individual post-mortems linked from `danluu/post-mortems` retain their original publishers' copyrights (stored for private study with links back to the originals).
+
+### Kill-and-Resume Test (`fetch.py urls`)
+- **Run 1 (interrupted via `Ctrl+C`):** `downloaded=5` (left 0 `.part` files behind; only completed files were written to `data/manifest.jsonl`).
+- **Run 2 (resumed):** `sources=10 downloaded=5 skipped=5 blocked=0 failed=0` (`seconds=3.4`).
+- **Run 3 (re-run / idempotent):** `sources=10 downloaded=0 skipped=10 blocked=0 failed=0` (`seconds=0.1`).
+
+### Capacity & Corpus Metrics
+- Tokens per page, measured: 747
+- Full corpus: 2.99 M tokens, 8,594 chunks, embedding about Rs 49, vectors 26 MB
+- The number that surprised me most, and why (2 lines):
+  Embedding the entire 4,000-page target corpus costs only Rs 49 ($0.52) and takes 26 MB of vector storage. I expected thousands of pages of technical post-mortems to cost far more and immediately exceed free-tier database storage.
+
+### One thing that went wrong today, and how I fixed it
+
+Out of the target URLs, 4 failed to fetch (1 blocked by `robots.txt` and 3 HTTP errors) and 9 returned blank page counts (JS-rendered status pages or non-HTML links like YouTube). I documented these exclusions in `DATASET.md` under "Known gaps" and confirmed the remaining 107 files (720 pages) still met the start target.
