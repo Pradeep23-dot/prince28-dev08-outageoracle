@@ -233,23 +233,41 @@ Out of the target URLs, 4 failed to fetch (1 blocked by `robots.txt` and 3 HTTP 
 During the initial `parse_corpus.py --limit 20` run, Neon Postgres closed the TLS connection mid-batch (`WinError 121` / `asyncpg.exceptions.ConnectionDoesNotExistError`), and 5 HTML files initially failed as `empty` (including `crates-io-postmortem` due to a `<meta http-equiv="refresh">` `.html` redirect stub). I re-ran `parse_corpus.py` to resume cleanly from already-committed documents, replaced the `crates-io-postmortem` redirect URL with its canonical trailing-slash URL in `data/sources.csv`, and verified recovery via `parse_corpus.py --retry-failed`.
 
 
-## D08 · LLM Gateway & Failure Probes
+### D08 · LLM gateway
 
-### Token Comparison (English vs. Tamil)
-- **Baseline (`"Hi"`):** 174 tokens in
-- **English (`"Explain in one sentence what a refund is."`):** 182 tokens in (8 message tokens)
-- **Tamil (`"பணத்தைத் திரும்பப் பெறுதல் என்றால் என்ன என்பதை ஒரு வாக்கியத்தில் விளக்கவும்"`):** 190 tokens in (16 message tokens)
-- **Multiplier:** Tamil required **2x** as many message tokens as English (and bypassed the English off-topic guardrail).
+- Primary: gemini-2.5-flash-lite (Gemini) · fallback: openai/gpt-oss-20b (Groq)
+- First question on my laptop: first words after **2.91** s, total **5.25** s, tokens in **186** / out **124**, cost Rs **0.034751**
+- Same question on my live URL (second, awake request): first words after **1.63** s. Day 1 target: under 1.5 s
 
-### Guardrails & Knowledge Gaps (Pre-Retrieval)
-- **Live system query (`"Why did our payment API fail last night?"`):** Correctly refused due to no access to live logs/infrastructure.
-- **Off-topic query (`"Who won the 2011 cricket world cup?"`):** Declined in one sentence as outside the product's subject.
-- **Northeast Blackout (2003):** Answered from parametric memory (~50M affected, GE XA/22 race condition) but inaccurately claimed the alarm processor and database server stalled simultaneously instead of alarms queuing until the backup server failed.
-- **Cloudflare Incident (Oct 30, 2023):** Responded `"I am not sure."` despite the post-mortem existing in the corpus, confirming the need for retrieval (Week 3) and stricter prompt grounding.
+### Tokens: English against Tamil
+
+| Message | tokens in |
+|---|---|
+| "Hi" (baseline: mostly my system prompt) | **174** |
+| The English sentence | **182** |
+| The same sentence in Tamil | **190** |
+
+- The Tamil message needs about **2** times the tokens of the English one.
+
+### What the model does without my documents
+
+- Question 6 ("Why did our payment API fail last night?"): did it admit it can't know? Its exact words: **Yes — `"I am not sure why your specific payment API failed last night, as I don't have access to your live systems, logs, or internal infrastructure."`**
+- A detail it got wrong or invented (question → what it said → what is true): **"In the Northeast blackout of 2003, how many people were affected and what exact software bug at FirstEnergy caused the alarm system to fail?" → Claimed `"the alarm processor and the database server—to stall simultaneously"` → In reality, a race condition in GE's XA/22 Energy Management System stalled the alarm processor and queued unacknowledged alarms, which later caused the primary server to fail over to a backup server that also stalled.**
+- The off-topic question: did it decline in one sentence? **Yes (`"That question is outside this product's subject."`)**
+
+### Fallback and circuit breaker
+
+- With the primary broken: provider **groq / openai/gpt-oss-20b** , fallback **YES** , first words after **3.89** s *(2.45 s once circuit breaker opened)*
+- The question at which "llm call gemini … error" stopped appearing in the log: number **4**
 
 ### The bill
 
 - /v1/usage today: calls **16** , errors **3** , fallbacks **4** , cost Rs **0.2222**
 - Average per answered question: Rs **0.0171** (my Day 1 target: under Rs 0.50)
+
+### One thing that went wrong today, and how I fixed it
+
+- **Issue:** When probing the off-topic guardrail in Tamil (`"பணத்தைத் திரும்பப் பெறுதல் என்றால் என்ன என்பதை..."`), the model bypassed the English off-topic restriction and answered the refund question instead of declining it, and `gemini-2.5-flash-lite` occasionally over-triggered the off-topic refusal on valid outage queries.
+- **Fix / Next step:** Documented both behaviors as evidence for adding retrieval grounding (Week 3) and tightening multi-language prompt instructions (Day 9).
 
 174, 182, 190 — Tamil is 2x English
