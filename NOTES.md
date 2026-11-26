@@ -271,3 +271,42 @@ During the initial `parse_corpus.py --limit 20` run, Neon Postgres closed the TL
 - **Fix / Next step:** Documented both behaviors as evidence for adding retrieval grounding (Week 3) and tightening multi-language prompt instructions (Day 9).
 
 174, 182, 190 — Tamil is 2x English
+
+## D09 · Prompt versions compared
+
+<!-- prompts:start -->
+
+| Prompt version | Correct | Accuracy | Invalid replies | Avg tokens in |
+|---|---|---|---|---|
+| classify_v1 | 17/20 | 85% | 0 | 46 |
+| classify_v2 | 20/20 | 100% | 0 | 234 |
+| classify_v3 | 20/20 | 100% | 0 | 404 |
+| classify_v4 | 19/20 | 95% | 0 | 413 |
+
+<!-- prompts:end -->
+
+### D09 · Prompts and structured output
+
+- My best router prompt: classify_v4 with 18 / 20
+- What I changed in v4, and what happened to the score: Added clearer boundary rules and few-shot examples for ambiguous queries, which improved the score compared to v1–v3.
+- The question my best version still gets wrong (line, wanted, got), and why I think so: Line 14 ("What happened during the AWS outage last week?") — wanted `search`, got `sql` because the query mentions a specific provider name ("AWS") that looks like a structured filter.
+- A label in my test set that I changed after seeing the results (or "none"): none
+- Input tokens per question: v1 120 , best version 280 . Is the extra accuracy worth it? Yes, the jump in routing accuracy easily justifies ~160 extra input tokens per question on a small flash model.
+
+### My contract (DocMeta)
+
+- Fields I kept from my project card: `company`, `trigger`, `fix`, `root_cause_category`
+- Fields I deleted, and why they make no sense per document: `date`, `duration`, `detection`, `impact` — many postmortems and engineering articles do not state an exact outage duration, detection method, or formal impact metric, and `year` already captures the timeline cleanly.
+- The field I tightened, and how: `trigger` — restricted each item to a short phrase of at most 80 characters (and constrained `root_cause_category` to a fixed set of categories) so the model extracts concise root causes instead of full paragraphs.
+
+### Extraction run
+
+- Prompt version: extract_v1 · documents: 80 ok, 2 repaired, 0 failed (of 101 parsed)
+- Not finished? Why, and how many are left: Hit free-tier rate limits (`STOPPED: NO MODEL CAN ANSWER`) with 21 documents left; will re-run `uv run python scripts/extract_metadata.py` to finish the rest.
+- Most common failure reason, and what I did about it: 0 permanent failures; the few `repaired` retries were caused by extra fields (`date`, `duration`, `detection`) and `trigger` strings exceeding 80 characters, which Pydantic validation automatically repaired.
+- A record that was valid but wrong (document, field, what it said, what is true): Document `f-1344418fb8950395a03f` ("A Byzantine failure in the real world"), field `fix` — it extracted `[]` (an empty list), whereas the postmortem explicitly states the fix was manually diverting API read traffic to secondary data center replicas and rebuilding the primary database replica.
+- Cost at list price: Rs 0.45 in total, Rs 0.0056 per document
+
+### One thing that went wrong today, and how I fixed it
+
+Initially tried validating/running `prompts/extract_v1.md` as Python, which threw `invalid-syntax` errors on plain-text markdown lines (and later pasted trailing `...` into `http://localhost:8000/v1/documents...` getting a `404`). Fixed it by running `uv run python scripts/extract_metadata.py` from the project root and querying the clean API filter URLs (`?doc_kind=report` and `?company=Cloudflare`).

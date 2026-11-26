@@ -28,3 +28,4 @@ Thumbs.db
 # Test and coverage output
 .coverage
 htmlcov/
+eval/cache/
