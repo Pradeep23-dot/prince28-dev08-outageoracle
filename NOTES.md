@@ -310,3 +310,36 @@ During the initial `parse_corpus.py --limit 20` run, Neon Postgres closed the TL
 ### One thing that went wrong today, and how I fixed it
 
 Initially tried validating/running `prompts/extract_v1.md` as Python, which threw `invalid-syntax` errors on plain-text markdown lines (and later pasted trailing `...` into `http://localhost:8000/v1/documents...` getting a `404`). Fixed it by running `uv run python scripts/extract_metadata.py` from the project root and querying the clean API filter URLs (`?doc_kind=report` and `?company=Cloudflare`).
+
+### D10 · Queue and worker
+
+- First run: 10 documents queued, finished in 49 s. Done 10 , skipped 0 , failed 0
+- Pace: 4.9 s per document (INGEST_RPM = 12 , INGEST_CONCURRENCY = 2 )
+
+### Kill test
+
+- Queued: 20. At the kill: queued 13 , running 2 , done 5 , failed 0
+- After the new worker: done 20 + skipped 0 + failed 0 = 20 (must be 20)
+- Documents in the database: 62 , different ids: 62 (must be equal)
+- The interrupted items came back after ~60 s. Why that long: Redis/arq holds an in-progress visibility lock (`job_timeout` / visibility timeout) on active jobs so another worker won't steal them while alive; after a hard kill, a replacement worker must wait for that ~60s lock to expire before reclaiming them.
+- Why nothing was doubled (one sentence, in my own words): Because the ingestion pipeline is idempotent and upserts documents by their unique `external_id` (and tracks item state in `ingest_items`), re-running the 2 interrupted documents updated existing records instead of inserting duplicates.
+
+### Dead-letter list
+
+| Stage (parse / extract / download / gave up) | Items | What I did |
+|---|---|---|
+| None (`dead_letter = []`) | 0 | Verified `/v1/ingest/dead-letter` returned `count: 0` across all 40 queued items (`done = 40`, `failed = 0`). |
+
+### Live ingestion
+
+- OutageOracle on Render: 5 of 5 documents done, 0 failed. The reasons: All 5 documents parsed cleanly and passed structured LLM extraction within the `INGEST_RPM` rate limit.
+- A request without the token gets status 401
+
+### Week 2 against Monday's estimate
+
+- docs/CAPACITY.md said: 720 pages, 537,816 tokens. docs/INGEST_REPORT.md says: 375 pages, 236,494 tokens
+- The difference, and why: `CAPACITY.md` measured all 107 raw files on disk before HTML boilerplate stripping and parser filtering, whereas `INGEST_REPORT.md` reflects the 62 clean, deduplicated non-record documents stored in Postgres (excluding 6 unparseable files and HTML navigation chrome).
+
+### One thing that went wrong today, and how I fixed it
+
+- When pasting code into `tests/unit/test_ingest_api.py` and `src/outageoracle/config.py`, extra leading spaces triggered a `pytest` `IndentationError` and `ruff` line-length/formatting errors; I removed the extra indentation and ran `uv run ruff format .` until `uv run poe test` and `uv run poe lint` both passed cleanly.
